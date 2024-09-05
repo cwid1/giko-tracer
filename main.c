@@ -3,28 +3,30 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <assert.h>
 
 typedef struct {
     long codepoint;
     int advance;
     int pitch;
     int rows;
-    uint8_t *pixel_array;
-} at_glyph_t;
+    uint8_t *bitmap;
+} giko_glyph_t;
 
 // Function prototypes
-int pitch_32bit(int width);
-at_glyph_t *new_glyph_from_file(char *filename);
-at_glyph_t *new_glyph_from_font_face(FT_Face face, FT_Long codepoint);
+giko_glyph_t *new_glyph_from_file(char *filename);
+giko_glyph_t *new_glyph_from_font_face(FT_Face face, FT_Long codepoint);
+double bitmap_similarity(giko_glyph_t *glyph_1, giko_glyph_t *glyph_2);
 int floor_frac_pixel(long fractional_pixel_count);
-// double bitmap_similarity(uint8_t *image_data_1, uint8_t *image_data_2);
+int pitch_32bit(int width);
+int num_set_pixels(int8_t pixel_byte);
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
         fprintf(stderr, "Usage: ascii_tracer <fontface.ttf> <filename.bmp>\n");
         return 1;
     }
-    at_glyph_t *image = new_glyph_from_file(argv[2]);
+    giko_glyph_t *image = new_glyph_from_file(argv[2]);
 
     FT_Library library;
     FT_Face face;
@@ -32,46 +34,28 @@ int main(int argc, char *argv[]) {
     FT_New_Face(library, argv[1], 0, &face);
     FT_Set_Pixel_Sizes(face, image->advance, image->rows);
 
-    at_glyph_t *glyph = new_glyph_from_font_face(face, 13247);
+    giko_glyph_t *glyph = new_glyph_from_font_face(face, 13247);
 
     FT_Done_Face(face);
     FT_Done_FreeType(library);
 
-    for (int y = 0; y < image->rows; y++) {
-        for (int x = 0; x < image->advance; x++) {
-            int byte = image->pixel_array[y * image->pitch + (x / 8)];
-            char pixel = (byte & (1 << (7 - (x % 8)))) ? '#' : '.';
-            printf("%c", pixel);
-        }
-        printf("\n");
-    }
+    printf("%lf\n", bitmap_similarity(image, glyph));
 
-    printf("\n");
-    
-    for (int y = 0; y < glyph->rows; y++) {
-        for (int x = 0; x < glyph->advance; x++) {
-            int byte = glyph->pixel_array[y * glyph->pitch + (x / 8)];
-            char pixel = (byte & (1 << (7 - (x % 8)))) ? '#' : '.';
-            printf("%c", pixel);
-        }
-        printf("\n");
-    }
-
-    free(image->pixel_array);
+    free(image->bitmap);
     free(image);
-    free(glyph->pixel_array);
+    free(glyph->bitmap);
     free(glyph);
     return 0;
 }
 
-at_glyph_t *new_glyph_from_file(char *filename) {
+giko_glyph_t *new_glyph_from_file(char *filename) {
     FILE *file = fopen(filename, "rb");
     if (!file) {
         perror("Error opening file");
         return NULL;
     }
 
-    at_glyph_t *image = malloc(sizeof(at_glyph_t));
+    giko_glyph_t *image = malloc(sizeof(giko_glyph_t));
 
     fseek(file, 18, SEEK_SET);
     fread(&image->advance, 4, 1, file);
@@ -102,14 +86,14 @@ at_glyph_t *new_glyph_from_file(char *filename) {
         }
     }
 
-    image->pixel_array = pixel_array;
-    image->codepoint = 0;
+    image->bitmap = pixel_array;
+    image->codepoint = -1;
 
     fclose(file);
     return image;
 }
 
-at_glyph_t *new_glyph_from_font_face(FT_Face face, FT_Long codepoint) {
+giko_glyph_t *new_glyph_from_font_face(FT_Face face, FT_Long codepoint) {
     FT_Long glyph_index = FT_Get_Char_Index(face, codepoint);
 
     // Load and render the glyph in monochrome mode
@@ -122,12 +106,12 @@ at_glyph_t *new_glyph_from_font_face(FT_Face face, FT_Long codepoint) {
     int pitch = pitch_32bit(advance);
 
     // Create and initialize the glyph_bitmap_t structure
-    at_glyph_t *glyph = malloc(sizeof(at_glyph_t));
+    giko_glyph_t *glyph = malloc(sizeof(giko_glyph_t));
     glyph->codepoint = codepoint;
     glyph->advance = advance;
     glyph->pitch = pitch;
     glyph->rows = face->size->metrics.y_ppem;
-    glyph->pixel_array = calloc(glyph->rows * pitch, sizeof(uint8_t));
+    glyph->bitmap = calloc(glyph->rows * pitch, sizeof(uint8_t));
 
     // Calculate the offsets for positioning
     int ascent = floor_frac_pixel(face->size->metrics.ascender);
@@ -150,12 +134,29 @@ at_glyph_t *new_glyph_from_font_face(FT_Face face, FT_Long codepoint) {
             int8_t dst_bit_mask = (1 << (7 - dst_bit_index));
 
             if (unaligned_bitmap->buffer[src_byte_index] & src_bit_mask) {
-                glyph->pixel_array[dst_byte_index] |= dst_bit_mask;
+                glyph->bitmap[dst_byte_index] |= dst_bit_mask;
             }
         }
     }
 
     return glyph;
+}
+
+double bitmap_similarity(giko_glyph_t *glyph_1, giko_glyph_t *glyph_2) {
+    assert(glyph_1->rows == glyph_2->rows);
+    assert(glyph_1->pitch == glyph_2->pitch);
+
+    double total_set_pixels = 0;
+    double overlapping_set_pixels = 0;
+
+    for (int i = 0; i < glyph_1->pitch * glyph_1->rows; i++) {
+        int8_t byte_1 = glyph_1->bitmap[i];
+        int8_t byte_2 = glyph_2->bitmap[i];
+        overlapping_set_pixels += num_set_pixels(byte_1 & byte_2);
+        total_set_pixels += num_set_pixels(byte_1 | byte_2);
+    }
+
+    return overlapping_set_pixels / total_set_pixels;
 }
 
 int pitch_32bit(int width) {
@@ -165,3 +166,14 @@ int pitch_32bit(int width) {
 int floor_frac_pixel(long fractional_pixel_count) {
     return fractional_pixel_count >> 6;
 }
+
+int num_set_pixels(int8_t pixel_byte) {
+    int count = 0;
+    for (int i = 0; i < 8; i++) {
+        if (pixel_byte & (1 << i)) {
+            count++;
+        }
+    }
+    return count;
+}
+
