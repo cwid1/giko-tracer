@@ -33,6 +33,7 @@ typedef struct giko_score {
 // Function prototypes
 giko_bitmap_t *new_image_bitmap(char *filepath);
 giko_bitmap_t *new_glyph_bitmap(FT_Face face, long codepoint);
+giko_bitmap_t *crop_bitmap(giko_bitmap_t *bitmap, int x, int y, int width, int height);
 giko_glyph_map_t *new_glyph_map(FT_Face face, char *filename);
 giko_glyph_t *new_glyph(FT_Face face, long codepoint);
 giko_score_t best_match(giko_bitmap_t *reference, giko_glyph_t *head);
@@ -43,6 +44,7 @@ int pitch_32bit(int width);
 void free_glyph_map(giko_glyph_map_t *map);
 void free_glyph_list(giko_glyph_t *list);
 void free_bitmap(giko_bitmap_t *bitmap);
+void print_bitmap(giko_bitmap_t *bitmap);
 
 int main(int argc, char *argv[]) {
     if (argc != 4) {
@@ -55,18 +57,32 @@ int main(int argc, char *argv[]) {
     FT_Face face;
     FT_Init_FreeType(&library);
     FT_New_Face(library, argv[1], 0, &face);
-    FT_Set_Pixel_Sizes(face, reference->width, reference->rows);
+    FT_Set_Pixel_Sizes(face, 16, 16);
 
+    giko_bitmap_t *chunk = crop_bitmap(reference, 0, 0, 16, 16);
+    
     giko_glyph_map_t *glyph_map = new_glyph_map(face, argv[2]);
-    giko_score_t best = best_match(reference, glyph_map->advances[reference->width]);
+    giko_score_t best = best_match(chunk, glyph_map->advances[16]);
     printf("%lu, %lf\n", best.codepoint, best.similarity);
 
     FT_Done_Face(face);
     FT_Done_FreeType(library);
 
+    free_bitmap(chunk);
     free_bitmap(reference);
     free_glyph_map(glyph_map);
     return 0;
+}
+
+void print_bitmap(giko_bitmap_t *bitmap) {
+    for (int y = 0; y < bitmap->rows; y++) {
+        for (int x = 0; x < bitmap->width; x++) {
+            int byte = bitmap->data[y * bitmap->pitch + (x / 8)];
+            char pixel = (byte & (1 << (7 - (x % 8)))) ? '#' : '.';
+            printf("%c", pixel);
+        }
+        printf("\n");
+    }
 }
 
 giko_bitmap_t *new_image_bitmap(char *filepath) {
@@ -111,6 +127,41 @@ giko_bitmap_t *new_image_bitmap(char *filepath) {
 
     fclose(file);
     return image;
+}
+
+giko_bitmap_t *crop_bitmap(giko_bitmap_t *bitmap, int x_offset, int y_offset, int width, int height) {
+    assert(x_offset >= 0);
+    assert(y_offset >= 0);
+    assert(width >= 0);
+    assert(height >= 0);
+
+    giko_bitmap_t *crop = malloc(sizeof(giko_bitmap_t));
+    int pitch = pitch_32bit(width);
+    crop->width = width;
+    crop->rows = height;
+    crop->pitch = pitch;
+    crop->data = calloc(pitch * height, sizeof(int8_t));
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int src_x = x_offset + x;
+            int src_y = y_offset + y;
+            
+            if (src_x < bitmap->width && src_y < bitmap->rows) {
+                int src_byte_index = src_y * bitmap->pitch + (src_x / 8);
+                int src_bit_index = src_x % 8;
+                int dst_byte_index = y * pitch + (x / 8);
+                int dst_bit_index = x % 8;
+
+                int8_t src_bit_mask = (1 << (7 - src_bit_index));
+                int8_t dst_bit_mask = (1 << (7 - dst_bit_index));
+
+                if (bitmap->data[src_byte_index] & src_bit_mask) {
+                    crop->data[dst_byte_index] |= dst_bit_mask;
+                }
+            }
+        }
+    }
+    return crop;
 }
 
 giko_glyph_map_t *new_glyph_map(FT_Face face, char *filepath) {
@@ -231,6 +282,10 @@ double bitmap_similarity(giko_bitmap_t *bitmap1, giko_bitmap_t *bitmap2) {
         int8_t byte_2 = bitmap2->data[i];
         overlapping_set_pixels += num_set_pixels(byte_1 & byte_2);
         total_set_pixels += num_set_pixels(byte_1 | byte_2);
+    }
+
+    if (total_set_pixels == 0) {
+        return 1;
     }
 
     return overlapping_set_pixels / total_set_pixels;
