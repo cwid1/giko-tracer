@@ -39,6 +39,20 @@ typedef struct giko_unicode_str {
     long *codepoints;
 } giko_unicode_str_t;
 
+const int set_bits[256] = {
+    0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3, 3, 4,
+    2, 3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
+    2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 1, 2, 2, 3, 2, 3, 3, 4,
+    2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+    2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6,
+    4, 5, 5, 6, 5, 6, 6, 7, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
+    2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5,
+    3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
+    2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6,
+    4, 5, 5, 6, 5, 6, 6, 7, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
+    4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8
+};
+
 // Function prototypes
 giko_bitmap_t *new_image_bitmap(char *filepath);
 giko_glyph_map_t *new_glyph_map(FT_Face face, char *filename);
@@ -55,7 +69,7 @@ giko_match_t best_scanline_match(giko_bitmap_t *reference,
 giko_bitmap_t *crop_bitmap(giko_bitmap_t *bitmap, int offset_x, int offset_y,
                            int width, int height);
 giko_match_t patch_match(giko_bitmap_t *reference, giko_glyph_t *head);
-double bitmap_similarity(giko_bitmap_t *bitmap1, giko_bitmap_t *bitmap2);
+double bitmap_similarity(giko_bitmap_t *reference, giko_bitmap_t *bitmap);
 
 void free_glyph_map(giko_glyph_map_t *map);
 void free_glyph_list(giko_glyph_t *list);
@@ -81,7 +95,7 @@ int main(int argc, char *argv[]) {
     FT_Set_Pixel_Sizes(face, 16, 16);
 
     giko_glyph_map_t *glyph_map = new_glyph_map(face, argv[2]);
-    giko_unicode_str_t *aa = new_art_str(reference, glyph_map, 0.3);
+    giko_unicode_str_t *aa = new_art_str(reference, glyph_map, 0.6);
     print_unicode_str(aa);
 
     FT_Done_Face(face);
@@ -227,14 +241,7 @@ int floor_frac_pixel(long fractional_pixel_count) {
 int pitch_32bit(int width) { return ((width + 31) / 32) * 4; }
 
 int num_set_pixels(int8_t pixel_byte) {
-    // PERFORMANCE: Hashmap
-    int count = 0;
-    for (int i = 0; i < 8; i++) {
-        if (pixel_byte & (1 << i)) {
-            count++;
-        }
-    }
-    return count;
+    return set_bits[pixel_byte & 0xFF];
 }
 
 giko_unicode_str_t *new_art_str(giko_bitmap_t *reference, giko_glyph_map_t *map,
@@ -253,8 +260,8 @@ giko_unicode_str_t *new_art_str(giko_bitmap_t *reference, giko_glyph_map_t *map,
             giko_match_t best_match =
                 best_scanline_match(reference, map, x, y, greed);
             codepoints[num_patches] = best_match.codepoint;
-            x += best_match.advance + 1;
             num_patches++;
+            x += best_match.advance;
         }
         codepoints[num_patches] = LINE_FEED;
         num_patches++;
@@ -343,25 +350,29 @@ giko_match_t patch_match(giko_bitmap_t *reference, giko_glyph_t *head) {
     return best_match;
 }
 
-double bitmap_similarity(giko_bitmap_t *bitmap1, giko_bitmap_t *bitmap2) {
-    assert(bitmap1->height == bitmap2->height);
-    assert(bitmap1->pitch == bitmap2->pitch);
+double bitmap_similarity(giko_bitmap_t *reference, giko_bitmap_t *bitmap) {
+    assert(reference->height == bitmap->height);
+    assert(reference->pitch == bitmap->pitch);
 
-    double total_set_pixels = 0;
-    double overlapping_set_pixels = 0;
+    int set_pixels = 0;
+    int overlapping_pixels = 0;
+    int noise_pixels = 0;
 
-    for (int i = 0; i < bitmap1->pitch * bitmap1->height; i++) {
-        int8_t byte_1 = bitmap1->data[i];
-        int8_t byte_2 = bitmap2->data[i];
-        overlapping_set_pixels += num_set_pixels(byte_1 & byte_2);
-        total_set_pixels += num_set_pixels(byte_1 | byte_2);
+    for (int i = 0; i < reference->pitch * reference->height; i++) {
+        int8_t reference_byte = reference->data[i];
+        int8_t bitmap_byte = bitmap->data[i];
+        set_pixels += num_set_pixels(reference_byte | bitmap_byte);
+        overlapping_pixels += num_set_pixels(reference_byte & bitmap_byte);
+        noise_pixels += num_set_pixels(bitmap_byte & ~reference_byte);
     }
 
-    if (total_set_pixels == 0) {
+    if (set_pixels == 0) {
         return 1;
     }
 
-    return overlapping_set_pixels / total_set_pixels;
+    int noise_penalty = noise_pixels * noise_pixels;
+
+    return (double)overlapping_pixels / (set_pixels + noise_penalty);
 }
 
 void free_glyph_map(giko_glyph_map_t *map) {
