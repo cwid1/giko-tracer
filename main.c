@@ -141,10 +141,11 @@ giko_bitmap_t *crop_bitmap(giko_bitmap_t *bitmap, int x_offset, int y_offset, in
     crop->rows = height;
     crop->pitch = pitch;
     crop->data = calloc(pitch * height, sizeof(int8_t));
+
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            int src_x = x_offset + x;
-            int src_y = y_offset + y;
+            int src_x = x + x_offset;
+            int src_y = y + y_offset;
             
             if (src_x < bitmap->width && src_y < bitmap->rows) {
                 int src_byte_index = src_y * bitmap->pitch + (src_x / 8);
@@ -203,48 +204,40 @@ giko_glyph_t *new_glyph(FT_Face face, long codepoint) {
 
 giko_bitmap_t *new_glyph_bitmap(FT_Face face, long codepoint) {
     FT_Long glyph_index = FT_Get_Char_Index(face, codepoint);
-
-    // Load and render the glyph in monochrome mode
     FT_Load_Glyph(face, glyph_index, FT_LOAD_MONOCHROME);
+
     FT_Render_Glyph(face->glyph, FT_RENDER_MODE_MONO);
-    FT_Bitmap *unaligned_bitmap = &face->glyph->bitmap;
+    FT_Bitmap *src_bitmap = &face->glyph->bitmap;
 
-    // Calculate pitch for the output bitmap
-    int advance = floor_frac_pixel(face->glyph->metrics.horiAdvance);
-    int pitch = pitch_32bit(advance);
+    int width = floor_frac_pixel(face->glyph->metrics.horiAdvance);
+    int rows = face->size->metrics.y_ppem;
+    int pitch = pitch_32bit(width);
 
-    // Create and initialize the glyph_bitmap_t structure
     giko_bitmap_t *bitmap = malloc(sizeof(giko_bitmap_t));
-    bitmap->width = advance;
+    bitmap->width = width;
     bitmap->pitch = pitch;
-    bitmap->rows = face->size->metrics.y_ppem;
+    bitmap->rows = rows;
     bitmap->data = calloc(bitmap->rows * pitch, sizeof(uint8_t));
 
-    // Calculate the offsets for positioning
     int ascent = floor_frac_pixel(face->size->metrics.ascender);
     int x_offset = face->glyph->bitmap_left;
     int y_offset = ascent - face->glyph->bitmap_top;
 
-    // Copy and position the glyph's bitmap into the final pixel array
-    for (int y = 0; y < unaligned_bitmap->rows; y++) {
-        for (int x = 0; x < unaligned_bitmap->width; x++) {
-            int src_byte_index = y * unaligned_bitmap->pitch + (x / 8);
-            int src_bit_index = x % 8;
-
+    for (int y = 0; y < src_bitmap->rows; y++) {
+        for (int x = 0; x < src_bitmap->width; x++) {
             int dst_x = x + x_offset;
             int dst_y = y + y_offset;
 
-            int in_x_bounds = (dst_x >= 0 && dst_x < advance);
-            int in_y_bounds = (dst_y >= 0 && dst_y < bitmap->rows);
-
-            if (in_x_bounds && in_y_bounds) {
+            if (dst_x < width && dst_y < rows) {
+                int src_byte_index = y * src_bitmap->pitch + (x / 8);
+                int src_bit_index = x % 8;
                 int dst_byte_index = dst_y * pitch + (dst_x / 8);
                 int dst_bit_index = dst_x % 8;
 
                 int8_t src_bit_mask = (1 << (7 - src_bit_index));
                 int8_t dst_bit_mask = (1 << (7 - dst_bit_index));
 
-                if (unaligned_bitmap->buffer[src_byte_index] & src_bit_mask) {
+                if (src_bitmap->buffer[src_byte_index] & src_bit_mask) {
                     bitmap->data[dst_byte_index] |= dst_bit_mask;
                 }
             }
