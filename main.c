@@ -4,9 +4,14 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <time.h>
 
+#define GLYPH_SIZE 16
+#define CHUNK_GREED 0.8
+#define GLYPH_GREED 0.8
 #define MAX_ART_STR_LEN 65536
 #define LINE_FEED 10
+#define MAX_DIGITS_CODEPOINT 8
 
 typedef struct giko_bitmap {
     int width;
@@ -22,10 +27,10 @@ typedef struct giko_glyph {
     struct giko_glyph *next;
 } giko_glyph_t;
 
-typedef struct giko_advance_map {
-    int size;
+typedef struct giko_glyph_map {
+    int num_advances;
     int em_height;
-    giko_glyph_t **advances;
+    giko_glyph_t **glyphs;
 } giko_glyph_map_t;
 
 typedef struct giko_match {
@@ -50,26 +55,26 @@ const int set_bits[256] = {
     3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
     2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6,
     4, 5, 5, 6, 5, 6, 6, 7, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
-    4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8
-};
+    4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8};
 
 // Function prototypes
 giko_bitmap_t *new_image_bitmap(char *filepath);
 giko_glyph_map_t *new_glyph_map(FT_Face face, char *filename);
 giko_glyph_t *new_glyph(FT_Face face, long codepoint);
 giko_bitmap_t *new_glyph_bitmap(FT_Face face, long codepoint);
-int floor_frac_pixel(long fractional_pixel_count);
+int floor_frac_pixel(long fractional_pixel_unit);
 int pitch_32bit(int width);
-int num_set_pixels(int8_t pixel_byte);
 giko_unicode_str_t *new_art_str(giko_bitmap_t *reference, giko_glyph_map_t *map,
-                                double greed);
+                                double chunk_greed, double glyph_greed);
 giko_match_t best_scanline_match(giko_bitmap_t *reference,
                                  giko_glyph_map_t *map, int x, int y,
-                                 double greed);
+                                 double chunk_greed, double glyph_greed);
 giko_bitmap_t *crop_bitmap(giko_bitmap_t *bitmap, int offset_x, int offset_y,
                            int width, int height);
-giko_match_t patch_match(giko_bitmap_t *reference, giko_glyph_t *head);
+giko_match_t patch_match(giko_bitmap_t *reference, giko_glyph_t *head,
+                         double glyph_greed);
 double bitmap_similarity(giko_bitmap_t *reference, giko_bitmap_t *bitmap);
+int num_set_pixels(int8_t pixel_byte);
 
 void free_glyph_map(giko_glyph_map_t *map);
 void free_glyph_list(giko_glyph_t *list);
@@ -82,7 +87,7 @@ unsigned convert_unicode_to_utf8(uint8_t *utf8, uint32_t codepoint);
 
 int main(int argc, char *argv[]) {
     if (argc != 4) {
-        fprintf(stderr, "Usage: ascii_tracer <fontface.ttf> <charset.txt> "
+        fprintf(stderr, "Usage: giko_tracer <fontface.ttf> <charset.txt> "
                         "<reference.bmp>\n");
         return 1;
     }
@@ -92,10 +97,11 @@ int main(int argc, char *argv[]) {
     FT_Face face;
     FT_Init_FreeType(&library);
     FT_New_Face(library, argv[1], 0, &face);
-    FT_Set_Pixel_Sizes(face, 16, 16);
+    FT_Set_Pixel_Sizes(face, GLYPH_SIZE, GLYPH_SIZE);
 
     giko_glyph_map_t *glyph_map = new_glyph_map(face, argv[2]);
-    giko_unicode_str_t *aa = new_art_str(reference, glyph_map, 0.6);
+    giko_unicode_str_t *aa =
+        new_art_str(reference, glyph_map, CHUNK_GREED, GLYPH_GREED);
     print_unicode_str(aa);
 
     FT_Done_Face(face);
@@ -151,28 +157,27 @@ giko_bitmap_t *new_image_bitmap(char *filepath) {
     return image;
 }
 
-giko_glyph_map_t *new_glyph_map(FT_Face face, char *filepath) {
-    FILE *file = fopen(filepath, "rb");
+giko_glyph_map_t *new_glyph_map(FT_Face face, char *charset_filepath) {
+    FILE *file = fopen(charset_filepath, "rb");
     if (!file) {
         perror("Error opening charset file");
         return NULL;
     }
 
     giko_glyph_map_t *map = malloc(sizeof(giko_glyph_map_t));
-    int max_advance = floor_frac_pixel(face->size->metrics.max_advance);
-    map->size = max_advance;
+    int max_advance = floor_frac_pixel(face->size->metrics.max_advance) + 1;
+    map->num_advances = max_advance;
     map->em_height = floor_frac_pixel(face->size->metrics.height);
-    map->advances = calloc(max_advance + 1, sizeof(giko_glyph_t *));
+    map->glyphs = calloc(max_advance, sizeof(giko_glyph_t *));
 
-    char codepoint_str[16];
+    char codepoint_str[MAX_DIGITS_CODEPOINT];
     while (fscanf(file, "%s ", codepoint_str) == 1) {
-        // PERFORMANCE: Density indexing
         long codepoint = strtol(codepoint_str, NULL, 10);
         giko_glyph_t *glyph = new_glyph(face, codepoint);
         int advance = glyph->advance;
-        giko_glyph_t *head = map->advances[advance];
+        giko_glyph_t *head = map->glyphs[advance];
         glyph->next = head;
-        map->advances[advance] = glyph;
+        map->glyphs[advance] = glyph;
     }
 
     fclose(file);
@@ -191,6 +196,11 @@ giko_glyph_t *new_glyph(FT_Face face, long codepoint) {
 
 giko_bitmap_t *new_glyph_bitmap(FT_Face face, long codepoint) {
     FT_Long glyph_index = FT_Get_Char_Index(face, codepoint);
+    if (!glyph_index) {
+        fprintf(stderr, "Codepoint %ld is not defined in fontface\n",
+                codepoint);
+        exit(EXIT_FAILURE);
+    }
     FT_Load_Glyph(face, glyph_index, FT_LOAD_MONOCHROME);
 
     FT_Render_Glyph(face->glyph, FT_RENDER_MODE_MONO);
@@ -234,18 +244,14 @@ giko_bitmap_t *new_glyph_bitmap(FT_Face face, long codepoint) {
     return bitmap;
 }
 
-int floor_frac_pixel(long fractional_pixel_count) {
-    return fractional_pixel_count >> 6;
+int floor_frac_pixel(long fractional_pixel_unit) {
+    return fractional_pixel_unit >> 6;
 }
 
 int pitch_32bit(int width) { return ((width + 31) / 32) * 4; }
 
-int num_set_pixels(int8_t pixel_byte) {
-    return set_bits[pixel_byte & 0xFF];
-}
-
 giko_unicode_str_t *new_art_str(giko_bitmap_t *reference, giko_glyph_map_t *map,
-                                double greed) {
+                                double chunk_greed, double glyph_greed) {
     long *codepoints = calloc(MAX_ART_STR_LEN, sizeof(long));
     int height = reference->height;
     int width = reference->width;
@@ -257,8 +263,8 @@ giko_unicode_str_t *new_art_str(giko_bitmap_t *reference, giko_glyph_map_t *map,
         int x = 0;
         while (x < width) {
             int y = row * em_height;
-            giko_match_t best_match =
-                best_scanline_match(reference, map, x, y, greed);
+            giko_match_t best_match = best_scanline_match(
+                reference, map, x, y, chunk_greed, glyph_greed);
             codepoints[num_patches] = best_match.codepoint;
             num_patches++;
             x += best_match.advance;
@@ -275,25 +281,27 @@ giko_unicode_str_t *new_art_str(giko_bitmap_t *reference, giko_glyph_map_t *map,
 
 giko_match_t best_scanline_match(giko_bitmap_t *reference,
                                  giko_glyph_map_t *map, int x, int y,
-                                 double greed) {
+                                 double chunk_greed, double glyph_greed) {
     giko_match_t best_match = {0};
-    int advance = map->size;
-    while (advance > 0 && best_match.similarity < greed) {
-        giko_glyph_t *list = map->advances[advance];
+    int advance = map->num_advances - 1;
+    giko_bitmap_t *patch;
+    while (advance > 0 && best_match.similarity < chunk_greed) {
+        patch = crop_bitmap(reference, x, y, advance, map->em_height);
+
+        giko_glyph_t *list = map->glyphs[advance];
         if (!list) {
             advance--;
             continue;
         }
-        giko_bitmap_t *patch =
-            crop_bitmap(reference, x, y, advance, map->em_height);
-        giko_match_t match = patch_match(patch, list);
+
+        giko_match_t match = patch_match(patch, list, glyph_greed);
+
         if (match.similarity >= best_match.similarity) {
-            best_match.advance = advance;
-            best_match.codepoint = match.codepoint;
-            best_match.similarity = match.similarity;
+            best_match = match;
         }
         advance--;
     }
+    free_bitmap(patch);
     return best_match;
 }
 
@@ -334,16 +342,20 @@ giko_bitmap_t *crop_bitmap(giko_bitmap_t *bitmap, int x_offset, int y_offset,
     return patch;
 }
 
-giko_match_t patch_match(giko_bitmap_t *reference, giko_glyph_t *head) {
+giko_match_t patch_match(giko_bitmap_t *reference, giko_glyph_t *head,
+                         double glyph_greed) {
     giko_match_t best_match = {0};
     best_match.advance = head->advance;
     giko_glyph_t *curr;
     for (curr = head; curr != NULL; curr = curr->next) {
         double similarity = bitmap_similarity(reference, curr->bitmap);
-        // PERFORMANCE: Add greed
         if (similarity >= best_match.similarity) {
             best_match.similarity = similarity;
             best_match.codepoint = curr->codepoint;
+
+            if (similarity >= glyph_greed) {
+                return best_match;
+            }
         }
     }
 
@@ -375,11 +387,13 @@ double bitmap_similarity(giko_bitmap_t *reference, giko_bitmap_t *bitmap) {
     return (double)overlapping_pixels / (set_pixels + noise_penalty);
 }
 
+int num_set_pixels(int8_t pixel_byte) { return set_bits[pixel_byte & 0xFF]; }
+
 void free_glyph_map(giko_glyph_map_t *map) {
-    for (int i = 0; i < map->size; i++) {
-        free_glyph_list(map->advances[i]);
+    for (int i = 0; i < map->num_advances; i++) {
+        free_glyph_list(map->glyphs[i]);
     }
-    free(map->advances);
+    free(map->glyphs);
     free(map);
 }
 
@@ -431,7 +445,6 @@ void print_unicode_str(giko_unicode_str_t *unicode_str) {
     printf("\n");
 }
 
-// https://stackoverflow.com/questions/38491380/how-to-print-unicode-codepoints-as-characters-in-c
 unsigned convert_unicode_to_utf8(uint8_t *utf8, uint32_t codepoint) {
     if (codepoint <= 0x7F) {
         utf8[0] = codepoint;
