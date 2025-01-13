@@ -1,24 +1,33 @@
 CC = gcc
-CFLAGS = -Wall
-FILES = main.c
-EXE_NAME = giko_tracer
+CFLAGS = -Iinclude -Wall -Wextra $(shell pkg-config --cflags freetype2)
+LDFLAGS = -shared -fPIC $(shell pkg-config --libs freetype2)
+SRC = src/giko.c
+OBJ = $(SRC:.c=.o)
+
+ifeq ($(shell uname), Darwin)
+    LIB_EXT = .dylib
+else
+    LIB_EXT = .so
+endif
+
+STATIC_TARGET = build/libgiko.a
+SHARED_TARGET = build/libgiko$(LIB_EXT)
+EXE_NAME = giko_cli
 LINT_OPTS = BasedOnStyle: LLVM, IndentWidth: 4
-FREETYPE_FLAGS = $(shell pkg-config --cflags --libs freetype2)
 
-LDFLAGS = $(FREETYPE_FLAGS) 
+all: $(SHARED_TARGET) $(STATIC_TARGET)
 
-all:
-	$(CC) $(CFLAGS) $(FILES) -o $(EXE_NAME) $(LDFLAGS)
+# Build shared library
+$(SHARED_TARGET): $(OBJ)
+	$(CC) $(LDFLAGS) -o $@ $^
 
-asan:
-	$(CC) $(CFLAGS) -fsanitize=address -g $(FILES) -o $(EXE_NAME) $(LDFLAGS)
+# Build static library
+$(STATIC_TARGET): $(OBJ)
+	ar rcs $@ $^
 
-prof:
-	$(CC) $(CFLAGS) -pg $(FILES) -o $(EXE_NAME) $(LDFLAGS)
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm $(EXE_NAME)
-
-lint:
-	clang-format -i -style='{$(LINT_OPTS)}' $(FILES)
+	rm -f $(OBJ) $(SHARED_TARGET) $(STATIC_TARGET)
 
