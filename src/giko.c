@@ -74,7 +74,6 @@ float bitmap_similarity(giko_bitmap_t *reference, giko_bitmap_t *bitmap,
 
 void free_glyph_list(giko_glyph_t *list);
 
-
 // Helper functions
 
 int num_set_pixels(uint8_t pixel_byte) { return set_bits[pixel_byte]; }
@@ -83,7 +82,11 @@ int smaller_than(int x, int y) { return x < y; };
 
 int larger_than(int x, int y) { return x > y; };
 
-int return_true(int x, int y) { (void)x; (void)y; return 1; }
+int return_true(int x, int y) {
+    (void)x;
+    (void)y;
+    return 1;
+}
 
 int quadratic(int x) { return x * x; }
 
@@ -187,14 +190,6 @@ giko_glyph_map_t *giko_new_glyph_map(char *ttf_filepath,
     assert(glyph_size > 0);
     assert(0 <= order && 3 >= order);
 
-    // Check if filepath exists
-    FILE *f = fopen(ttf_filepath, "r");
-    if (!f) {
-        perror(ttf_filepath);
-        return NULL;
-    }
-    fclose(f);
-
     giko_glyph_map_t *map = malloc(sizeof(giko_glyph_map_t));
     if (!map) {
         perror("Error allocating memory");
@@ -203,8 +198,18 @@ giko_glyph_map_t *giko_new_glyph_map(char *ttf_filepath,
 
     FT_Library library;
     FT_Face face;
-    FT_Init_FreeType(&library);
-    FT_New_Face(library, ttf_filepath, 0, &face);
+    int error;
+    error = FT_Init_FreeType(&library);
+    if (error) {
+        fprintf(stderr, "Error: Freetype library initialisation\n");
+        return NULL;
+    }
+    error = FT_New_Face(library, ttf_filepath, 0, &face);
+    if (error) {
+        fprintf(stderr, "Error: Freetype face could not be initialised. Check "
+                        "that the filepath is correct and that the font file "
+                        "is in a supported format\n");
+    }
     FT_Set_Pixel_Sizes(face, 0, glyph_size);
 
     int max_advance = floor_frac_pixel(face->size->metrics.max_advance) + 1;
@@ -259,7 +264,6 @@ giko_glyph_t *new_glyph(FT_Face face, giko_codepoint_t codepoint) {
 
     return glyph;
 }
-
 
 giko_glyph_t *insert_glyph(giko_glyph_t *glyph, giko_glyph_t *head,
                            sort_order_t order) {
