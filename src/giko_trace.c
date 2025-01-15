@@ -71,7 +71,7 @@ int giko_trace(config_t config) {
     giko_glyph_map_t *map = giko_new_glyph_map(
         config.font_file, charset, glyph_size, config.glyph_map_order);
     giko_codepoint_t *aa =
-        giko_new_art_str(reference, map, config.chunkiness, config.accuracy,
+        giko_new_art_str(reference, map, 1 - config.chunkiness, config.accuracy,
                          config.denoise, fidelity_function);
 
     if (strlen(config.output_file) > 0) {
