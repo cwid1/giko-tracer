@@ -235,16 +235,10 @@ Output:
 giko_codepoint_t *giko_load_charset(char *filepath, int base_encoding);
 
 /*
-    Read codepoints line-by-line from a file.
+    Read a bilevel bitmap.
 
 Input:
-    char *filepath:     String representing filepath to character set.
-                        Character set file should have each codepoint number
-                        on a seperate line. The prefix "U+" should be ommitted.
-    int base_encoding:  The base representation of the unicode i.e. 10 for
-                        decimal codepoints, 16 for hexadecimal codepoints.
-                        See strtol for more detail on how different base numbers
-                        are represented in string.
+    char *bmp_filepath: String representing filepath to bilevel bitmap.
 
 Output:
     - Returns a pointer to a giko_bitmap_t.
