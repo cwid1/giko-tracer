@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
     int opt;
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "c:i:f:o:C:H:b:s:g:k:a:d:F:nh",
+    while ((opt = getopt_long(argc, argv, "c:i:f:o:C:H:b:s:g:k:a:d:F:nvh",
                               long_options, &option_index)) != -1) {
         switch (opt) {
         case 'C':
@@ -146,6 +146,7 @@ int main(int argc, char *argv[]) {
             break;
         case 'v':
             verbose = 1;
+            break;
         case 'h':
             print_usage(argv[0]);
             return EXIT_SUCCESS;
