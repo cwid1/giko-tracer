@@ -14,29 +14,29 @@ extern "C" {
 
 // Types
 typedef struct giko_bitmap {
-    int width;          // Width of image i.e. number of pixels across
+    int width; // Width of image i.e. number of pixels across
 
-    int pitch;          // Number of bytes per row. Aligned on 32 bit
-                        // boundaries. If the width of an image is not divisible
-                        // by 32, the row is padded with unset (0) bits.
+    int pitch; // Number of bytes per row. Aligned on 32 bit
+               // boundaries. If the width of an image is not divisible
+               // by 32, the row is padded with unset (0) bits.
 
-    int height;         // Height of image.
+    int height; // Height of image.
 
-    int real_size;      // Number of pixels in image i.e. width * height
+    int real_size; // Number of pixels in image i.e. width * height
 
-    int buffer_size;    // Number of bits in bitmap i.e. pitch * height
+    int buffer_size; // Number of bits in bitmap i.e. pitch * height
 
-    uint8_t *data;      // One-dimensional array of 8 bit bytes. Each bit
-                        // represents either a set (1) pixel of an unset (0)
-                        // pixel.
-                        // The lowest memory address stores the 8 top-left
-                        // pixels of the bitmap.
-                        // The highest memory address is the 8 bottom-right
-                        // pixels of the bitmap.
-                        // The leftmost bit represents the leftmost pixel of the
-                        // 8 pixels represented in a byte.
+    uint8_t *data; // One-dimensional array of 8 bit bytes. Each bit
+                   // represents either a set (1) pixel of an unset (0)
+                   // pixel.
+                   // The lowest memory address stores the 8 top-left
+                   // pixels of the bitmap.
+                   // The highest memory address is the 8 bottom-right
+                   // pixels of the bitmap.
+                   // The leftmost bit represents the leftmost pixel of the
+                   // 8 pixels represented in a byte.
 
-    int set_pixels;     // Number of set bits in the data field.
+    int set_pixels; // Number of set bits in the data field.
 } giko_bitmap_t;
 
 typedef struct giko_glyph_map giko_glyph_map_t;
