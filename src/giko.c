@@ -57,7 +57,7 @@ giko_glyph_t *new_glyph(FT_Face face, giko_codepoint_t codepoint);
 giko_bitmap_t *new_glyph_bitmap(FT_Face face, giko_codepoint_t codepoint);
 
 giko_glyph_t *insert_glyph(giko_glyph_t *glyph, giko_glyph_t *head,
-                           enum sort_order order);
+                           sort_order_t order);
 
 giko_match_t best_scanline_match(giko_bitmap_t *reference,
                                  giko_glyph_map_t *map, int x, int y,
@@ -183,9 +183,17 @@ giko_bitmap_t *giko_crop_bitmap(giko_bitmap_t *bitmap, int x_offset,
 
 giko_glyph_map_t *giko_new_glyph_map(char *ttf_filepath,
                                      giko_codepoint_t *charset, int glyph_size,
-                                     enum sort_order order) {
+                                     sort_order_t order) {
     assert(glyph_size > 0);
     assert(0 <= order && 3 >= order);
+
+    // Check if filepath exists
+    FILE *f = fopen(ttf_filepath, "r");
+    if (!f) {
+        perror(ttf_filepath);
+        return NULL;
+    }
+    fclose(f);
 
     giko_glyph_map_t *map = malloc(sizeof(giko_glyph_map_t));
     if (!map) {
@@ -254,7 +262,7 @@ giko_glyph_t *new_glyph(FT_Face face, giko_codepoint_t codepoint) {
 
 
 giko_glyph_t *insert_glyph(giko_glyph_t *glyph, giko_glyph_t *head,
-                           enum sort_order order) {
+                           sort_order_t order) {
     if (head == NULL) {
         return glyph;
     }

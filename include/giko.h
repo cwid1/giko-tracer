@@ -1,5 +1,5 @@
-#ifndef GIKO_TRACER_H
-#define GIKO_TRACER_H
+#ifndef GIKO__H
+#define GIKO__H
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,7 +43,7 @@ typedef struct giko_glyph_map giko_glyph_map_t;
 
 typedef uint32_t giko_codepoint_t;
 
-enum sort_order { NONE, ASCENDING, DESCENDING };
+typedef enum { NONE, ASCENDING, DESCENDING } sort_order_t;
 
 // Main functions
 
@@ -90,7 +90,7 @@ Output:
  */
 giko_glyph_map_t *giko_new_glyph_map(char *ttf_filepath,
                                      giko_codepoint_t *charset, int glyph_size,
-                                     enum sort_order order);
+                                     sort_order_t order);
 
 /*
  Generates an ascii_art string from a reference bitmap and a glyph map.
