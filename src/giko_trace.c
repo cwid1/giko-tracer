@@ -56,7 +56,7 @@ int giko_trace(config_t config) {
     }
     giko_bitmap_t *reference = get_bitmap(bmp_blob);
 
-    if (config.negate) {
+    if (!config.negate) {
         giko_negate_bitmap(reference);
     }
 
