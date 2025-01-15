@@ -256,9 +256,9 @@ void print_usage(const char *program_name) {
            "0.05)\n");
     printf("  -F, --fidelity ENUM           Fidelity: LOW, MEDIUM, HIGH "
            "(default: MEDIUM)\n");
-    printf("  -n, --negate                  Negate: Set to invert the colours "
+    printf("  -n, --negate                  Negate (invert) colours of image"
            "of the image\n");
-    printf("  -v, --verbose                 Verbose: Print argument list\n");
+    printf("  -v, --verbose                 Print argument list\n");
 }
 
 void print_config(config_t config) {
@@ -279,5 +279,5 @@ void print_config(config_t config) {
     printf("Fidelity: %s\n", (config.fidelity == LOW)      ? "LOW"
                              : (config.fidelity == MEDIUM) ? "MEDIUM"
                                                            : "HIGH");
-    printf("Negate: %s\n", (config.negate) ? "TRUE" : "FALSE");
+    printf("Negate: %s\n", (config.negate) ? "true" : "false");
 }
