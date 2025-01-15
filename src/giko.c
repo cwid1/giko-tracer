@@ -416,7 +416,7 @@ giko_match_t best_scanline_match(giko_bitmap_t *reference,
 
     giko_match_t best_match = {0};
     int advance = map->num_advances - 1;
-    giko_bitmap_t *patch;
+    giko_bitmap_t *patch = NULL;
     while (advance > 0 && best_match.similarity < chunk_greed) {
         patch = giko_crop_bitmap(reference, x, y, advance, map->em_height);
 
@@ -435,7 +435,8 @@ giko_match_t best_scanline_match(giko_bitmap_t *reference,
         advance--;
     }
 
-    giko_free_bitmap(patch);
+    if (patch)
+        giko_free_bitmap(patch);
     return best_match;
 }
 
