@@ -358,7 +358,7 @@ giko_codepoint_t *giko_new_art_str(giko_bitmap_t *reference,
                                    giko_glyph_map_t *map, float chunk_greed,
                                    float glyph_greed, float noise_threshold,
                                    int (*fidelity_function)(int)) {
-    assert(0 < chunk_greed && 1 >= chunk_greed);
+    assert(0 <= chunk_greed && 1 >= chunk_greed);
     assert(0 < glyph_greed && 1 >= glyph_greed);
     assert(0 <= noise_threshold && 1 >= noise_threshold);
 
