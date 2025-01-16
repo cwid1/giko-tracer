@@ -18,7 +18,9 @@ LINT_OPTS = BasedOnStyle: LLVM, IndentWidth: 4
 EXE_SRC = src/cli.c
 EXE_NAME = giko-trace
 
-all: $(SHARED_TARGET) $(STATIC_TARGET)
+all: libgiko giko-trace
+
+libgiko: $(SHARED_TARGET) $(STATIC_TARGET)
 
 # Build shared library
 $(SHARED_TARGET): $(OBJ)
@@ -32,8 +34,8 @@ $(STATIC_TARGET): $(OBJ)
 	$(CC) $(CFLAGS) $(FT_CFLAGS) -c $< -o $@
 
 giko-trace:
-	$(CC) -fsanitize=address -g -Iinclude -L$(BUILD_DIR) -lgiko $(EXE_SRC) -o $(EXE_NAME)
+	$(CC) -Iinclude -L$(BUILD_DIR) -lgiko $(EXE_SRC) -o $(EXE_NAME)
 
 clean:
-	rm -f $(OBJ) $(SHARED_TARGET) $(STATIC_TARGET)
+	rm -f $(OBJ) $(SHARED_TARGET) $(STATIC_TARGET) $(EXE_NAME)
 
