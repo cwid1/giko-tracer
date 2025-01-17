@@ -33,7 +33,7 @@ Giko Tracer is a project to convert images into ASCII and ASCII-adjacent art.
 
 To build both libgiko and giko-trace, run the following commands:
 ```
-git clone https://github.com/cwid1/Giko-tracer.git
+git clone https://github.com/cwid1/giko-tracer.git
 cd giko-tracer
 make
 ```
