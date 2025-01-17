@@ -160,7 +160,7 @@ Giko Neko is a cat whose caricature is drawn in Shift_JIS (an ASCII-adjacent enc
 ``` ☆ *　. 　☆
 　　. ∧＿∧　 ∩　* ☆
 * ☆ (=・∀・)≠ .
-　. ⊂　A  ノ* ☆
+　. ⊂　   ノ* ☆
 ☆ * (つ ノ .☆
 　　 (ノ
 ```
