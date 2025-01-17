@@ -62,7 +62,7 @@ Due to copyright, and to reduce the size of the repository, the MS_PGothic and M
 
 ### Basic Usage Example:
 ```
-giko-cli -c charsets/classic_ascii.txt -f ms_pgothic.ttf -i sample/sample.png -o out.txt
+giko-cli -c charsets/classic_ascii.txt -f ms_pgothic.ttf -i assets/sample.png -o out.txt
 ```
 
 ### Basic Options
@@ -110,15 +110,15 @@ To make your commands more succinct, options can be specified in a text file.
 
 In config.txt:
 ``` charset_file=charsets/ms_pgothic/charset512.txt
+image_file=assets/sample.png
 font_file=fonts/ms_pgothic.ttf
-image_file=sample/sample.png
 output_file=out.txt
 height=32
 base_encoding=10
-glyph_map_order=ASCENDING
-chunkiness=0.80
-accuracy=0.80
-denoise=0.10
+glyph_map_order=NONE
+chunkiness=0.50
+accuracy=0.50
+denoise=0.05
 fidelity=HIGH
 negate=false
 ```
